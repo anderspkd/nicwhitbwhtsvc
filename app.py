@@ -93,5 +93,14 @@ def video_status():
         return jsonify({'video' : current_video})
 
 
+@app.route('/')
+def index():
+
+    return """Interface:
+    /video/status
+    /video/play
+    /video/stop
+    """
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
