@@ -7,7 +7,7 @@ from subprocess import Popen, PIPE
 from os import putenv
 
 # prefex for the dbus process of omxplayer
-TMP_PREFIX = '/tmp/omxplayerdbus'
+TMP_PREFIX = '/tmp/omxplayerdbus.'
 
 # Conversion constants from microseconds to whatever
 TIME_UNITS = {'us' : 1,
