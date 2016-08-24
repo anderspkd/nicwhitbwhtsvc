@@ -1,75 +1,106 @@
 from __future__ import unicode_literals
+
 import youtube_dl
+import dbus
+
 from subprocess import Popen, PIPE
+from os import putenv
 
-class Video:
+# prefex for the dbus process of omxplayer
+TMP_PREFIX = '/tmp/omxplayerdbus'
 
-    def __init__(self, url, video_program='mpv'):
+# Conversion constants from microseconds to whatever
+TIME_UNITS = {'us' : 1,
+              'ms' : 1000,
+              's'  : 10**6,
+              'm'  : (10**6)*60}
 
-        # Info object
-        info = {}
+class VideoPlayer(object):
 
-        info['url'] = url
+    def __init__(self, url_or_file, fetch_with_ytdl=False, cmd='omxplayer', args=['-o', 'hdmi']):
 
-        self._video_program = video_program
-        self._process = None
+        # Set file to play. Can be gotten via. youtube-dl
+        if fetch_with_ytdl and _is_url(url_or_file):
+            self.file_link = _fetch_with_ytdl(url_or_file)
+        else:
+            self.file_link = url_or_file
 
-        self.PLAYING = False
+        # Start the video player
+        self.args = args + [self.file_link]
+        self._process = Popen([cmd] + self.args)
 
-        with youtube_dl.YoutubeDL() as ydl:
-            result = ydl.extract_info(url, download=False)
+        # Open dbus connection to video process
+        # TODO: Add the properties interface (at least)
+        _init_env()
+        self.bus = dbus.SessionBus()
+        self.player = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
+                                     '/org/mpris/MediaPlayer2')
+        self.player_iface = dbus.Interface(self.player,
+                                           dbus_interface='org.mpris.MediaPlayer2.Player')
 
-        info['title'] = result['title'] if 'title' in result else "(!)Untitled Video"
+    # Helper functions. Meant to be for internal use only
+    def _init_env(self):
+        with open(TMP_PREFIX + 'pi') as f:
+            putenv('DBUS_SESSION_BUS_ADDRESS', f.read().strip())
+        with open(TMP_PREFIX + 'pi.pid') as f:
+            putenv('DBUS_SESSION_BUS_PID', f.read().strip())
 
-        self._all_formats = result['formats'] if 'formats' in result else []
+    def _is_url(self, url):
+        """Test if [url] is a valid url"""
 
-        formats = [x for x in self._all_formats if 'resolution' in x]
+        # TODO: make more serious
+        return url[:4] == 'http' or url[:5] == 'https'
 
-        def res_cmp(k): # crude resolution comparetor
-            rs = k['resolution'].split('x')
-            x = int(rs[0])
-            y = int(rs[1])
-            return x + y
+    def _fetch_with_ytdl(self, url):
+        """Fetch a direct file url with youtube-dl.
+        Should return the highest resolution avaliable
+        """
 
-        self._formats = sorted(formats, key=res_cmp, reverse=True)
+        with youtube_dl.YoutubeDL as ydl:
+            r = ydl.extract_info(url, download=False)
 
-        info['avaliable resolutions'] = [x['resolution'] for x in self._formats]
-        info['resolution'] = None
+        # title = r['title'] if 'title' in r else 'untitled'
 
-        for v in self._formats:
-            info[v['resolution']] = v
+        if 'formats' in r:
+            fmt = [x for x in r['formats'] if 'resolution' in x]
+            def res_cmp(it):
+                rs = it['resolution'].split('x')
+                return int(rs[0]) + int(rs[1])
+            file_link = sorted(fmt, key=res_cmp, reverse=True)[0]
+            return file_link
+        else:
+            # Make less generic
+            raise Exception
 
-        self.info = info
-        self._result = result
+    def _convert_num(self, t, step, fn):
+        try:
+            multp = TIME_UNITS[step]
+            r = str(int(t) * multp)
+            return fn(r)
+        except:
+            print('"_convert_num" failed with args: {}, {}, {}'.format(t, step, fn))
+            raise
 
+    # Outward interface
+    def pause(self):
+        self.player_iface.Pause()
 
-    def status(self):
-        process = self._process
-        if process is not None:
-            process.poll()
-            return p.returncode
-        return None
+    def play(self):
+        self.player_iface.Play()
 
+    def toggle_play(self):
+        self.player_iface.PlayPause()
 
-    def play(self, res='best'):
-        if self.PLAYING is False:
+    def mute(self):
+        self.player_iface.Mute()
 
-            vid = None
+    def unmute(self):
+        self.player_iface.Unmute()
 
-            if res == 'best':
-                vid = self._formats[0]['url']
-            else:
-                try:
-                    vid = self.info[res]['url']
-                except KeyError:
-                    print('resolution not found ' + res)
-                    vid = self._formats[0]['url']
+    def seek(self, t, step='s'):
+        to = self._convert_num(t, step, dbus.Int64)
+        self.player_iface.Seek(to)
 
-            self._process = Popen([self._video_program, vid], stdin=PIPE, universal_newlines=True)
-            self.PLAYING = True
-
-
-    def stop(self):
-        if self.PLAYING is True:
-            self._process.kill()
-            self.PLAYING = False
+    def set_position(self, t, step='s'):
+        to = self._convert_num(t, step, dbus.Int64)
+        self.player_iface.SetPosition(to)
