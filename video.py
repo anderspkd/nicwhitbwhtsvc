@@ -31,7 +31,7 @@ class VideoPlayer(object):
 
         # Open dbus connection to video process
         # TODO: Add the properties interface (at least)
-        _init_env()
+        self._init_env()
         self.bus = dbus.SessionBus()
         self.player = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
                                      '/org/mpris/MediaPlayer2')
