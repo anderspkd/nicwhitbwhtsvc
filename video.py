@@ -1,10 +1,11 @@
-from __future__ import unicode_literals
+from __future__ import unicode_literals, print_function
 
 import youtube_dl
 import dbus
 
 from subprocess import Popen, PIPE
-from os import putenv
+from os import putenv, path, setsid
+from time import sleep
 
 # prefex for the dbus process of omxplayer
 TMP_PREFIX = '/tmp/omxplayerdbus.'
@@ -17,33 +18,58 @@ TIME_UNITS = {'us' : 1,
 
 class VideoPlayer(object):
 
-    def __init__(self, url_or_file, fetch_with_ytdl=False, cmd='omxplayer', args=['-o', 'hdmi']):
+    def __init__(self, url_or_file, fetch_with_ytdl=False, cmd='/home/pi/omxplayer/omxplayer', args=['-o', 'hdmi']):
 
         # Set file to play. Can be gotten via. youtube-dl
-        if fetch_with_ytdl and _is_url(url_or_file):
-            self.file_link = _fetch_with_ytdl(url_or_file)
+        if fetch_with_ytdl and self._is_url(url_or_file):
+            print('fetching with youtube-dl')
+            self.ydl_result = self._fetch_with_ytdl(url_or_file)
+            if 'url' in self.ydl_result:
+                self.video_link = self.ydl_result['url']
+            else:
+                raise NameError('could not fetch {} with youtube-dl'.format(url_or_file))
         else:
-            self.file_link = url_or_file
+            self.video_link = url_or_file
 
         # Start the video player
-        self.args = args + [self.file_link]
-        self._process = Popen([cmd] + self.args)
+        self.args = args + [self.video_link]
+        self._process = Popen([cmd] + self.args, preexec_fn=setsid)
+        print('Started process with pid: {}'.format(self._process.pid))
 
-        # Open dbus connection to video process
-        # TODO: Add the properties interface (at least)
-        self._init_env()
-        self.bus = dbus.SessionBus()
-        self.player = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
-                                     '/org/mpris/MediaPlayer2')
-        self.player_iface = dbus.Interface(self.player,
-                                           dbus_interface='org.mpris.MediaPlayer2.Player')
+        # wait until the dbus files are present. Maybe someone removed them...
+        while not path.isfile(TMP_PREFIX + 'pi'):
+            pass
+
+        print('entering _init_dbus()')
+        self._init_dbus()
 
     # Helper functions. Meant to be for internal use only
-    def _init_env(self):
+    def _init_dbus(self):
         with open(TMP_PREFIX + 'pi') as f:
             putenv('DBUS_SESSION_BUS_ADDRESS', f.read().strip())
         with open(TMP_PREFIX + 'pi.pid') as f:
             putenv('DBUS_SESSION_BUS_PID', f.read().strip())
+
+        for tries in range(20):
+            try:
+                bus = dbus.SessionBus()
+                self.player = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
+                                             '/org/mpris/MediaPlayer2',
+                                             introspect=False)
+                self.root_iface = dbus.Interface(self.player, dbus_interface='org.mpris.MediaPlayer2')
+                self.player_iface = dbus.Interface(self.player, dbus_interface='org.mpris.MediaPlayer2.Player')
+            except:
+                print('.', end='')
+                sleep(0.5)
+                continue
+            break
+        print(' found dbus connection')
+
+
+    # TODO: clear object perhaps?
+    def _kill(self):
+        print('Exiting...')
+        self.root_iface.Quit()
 
     def _is_url(self, url):
         """Test if [url] is a valid url"""
@@ -56,18 +82,16 @@ class VideoPlayer(object):
         Should return the highest resolution avaliable
         """
 
-        with youtube_dl.YoutubeDL as ydl:
-            r = ydl.extract_info(url, download=False)
-
-        # title = r['title'] if 'title' in r else 'untitled'
+        ydl = youtube_dl.YoutubeDL()
+        r = ydl.extract_info(url, download=False)
 
         if 'formats' in r:
             fmt = [x for x in r['formats'] if 'resolution' in x]
             def res_cmp(it):
                 rs = it['resolution'].split('x')
                 return int(rs[0]) + int(rs[1])
-            file_link = sorted(fmt, key=res_cmp, reverse=True)[0]
-            return file_link
+            video_link = sorted(fmt, key=res_cmp, reverse=True)[0]
+            return video_link
         else:
             # Make less generic
             raise Exception
@@ -87,6 +111,9 @@ class VideoPlayer(object):
 
     def play(self):
         self.player_iface.Play()
+
+    def stop(self):
+        self._kill()
 
     def toggle_play(self):
         self.player_iface.PlayPause()
