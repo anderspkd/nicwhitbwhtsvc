@@ -35,13 +35,11 @@ class VideoPlayer(object):
         self.args = args + [self.video_link]
         devnull = open(os.devnull, 'w')
         self._process = subprocess.Popen([cmd] + self.args, stdout=devnull)
-        print('Started process with pid: {}'.format(self._process.pid))
 
         # wait until the dbus files are present. Maybe someone removed them...
         while not os.path.isfile(TMP_PREFIX + 'pi'):
             pass
 
-        print('entering _init_dbus()')
         self._init_dbus()
 
     # Helper functions. Meant to be for internal use only
