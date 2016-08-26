@@ -25,7 +25,7 @@ application/json` header.
 
 | Method | endpoint | arguments |
 | ------ |:--------:|:---------:|
-| POST   | /play    | url, fetch|
+| `POST`   | `/play`    | `url`, `fetch`|
 
 `url` specifies the location of the video (can be both a true url or a
 file link). `fetch` indicates whether or not to use `youtube-dl` to
@@ -33,15 +33,15 @@ fetch a video link (needed for youtube links, for example).
 
 | Method | endpoint | arguments |
 | ------ |:--------:|:---------:|
-| GET | /pause | |
+| `GET` | `/pause` | |
 Pauses the current video.
 
 | Method | endpoint | arguments |
 | ------ |:--------:|:---------:|
-| GET | /resume | |
+| `GET` | `/resume` | |
 Resumes current video
 
 | Method | endpoint | arguments |
 | ------ |:--------:|:---------:|
-| GET | /stop | |
+| `GET` | `/stop` | |
 Stops current video. This includes killing the `omxplayer` process.
