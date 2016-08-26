@@ -1,106 +1,75 @@
 from flask import Flask, request, jsonify
-import video as v
+from video import VideoPlayer
 
 app = Flask(__name__)
 
 current_video = None
 
-@app.route('/video/play', methods=['POST'])
+@app.route('/play', methods=['POST'])
 def video_play():
 
     global current_video
-
-    url = request.form['url']
+    data = request.get_json()
 
     if current_video is not None:
-        if current_video.PLAYING:
-            return jsonify({'error' : 'Video already playing'})
+        return('Stop current video first!')
 
-    current_video = v.Video(url, video_program='mpv')
-    current_video.play()
+    if data is not None:
 
-    return jsonify({'playing' : current_video.info['title']})
+        try:
+            video = data['url']
+        except KeyError:
+            return('No video link provided!')
+        try:
+            fetch = data['fetch']
+        except:
+            fetch = False
+
+        current_video = VideoPlayer(video, fetch_with_ytdl=fetch)
+
+    return('OK')
 
 
-@app.route('/video/stop', methods=['GET'])
+@app.route('/stop', methods=['GET'])
 def video_stop():
 
     global current_video
 
-    msg = ''
-
     if current_video is not None:
-        if current_video.PLAYING:
-            current_video.stop()
-            current_video = None
-            msg = 'video stopped'
-        else:
-            msg = 'no video to stop'
-    else:
-        msg = 'no video to stop'
-
-    return jsonify({'message' : msg})
-
-
-@app.route('/video/changeres', methods=['PUT'])
-def video_changeres():
-
-    global current_video
-
-    msg = ''
-    resolution = request.form['resolution']
-
-    if current_video is not None:
-
         current_video.stop()
-        current_video.play(res=resolution)
-
-        msg = 'changed resolution'
-
+        current_video = None
+        return('OK')
     else:
-
-        msg = 'no video playing'
-
-    return jsonify({'message' : msg})
+        return('No video to stop')
 
 
-@app.route('/video/playing', methods=['GET'])
-def video_playing():
+@app.route('/pause', methods=['GET'])
+def video_pause():
 
     global current_video
-
-    msg = ''
 
     if current_video is not None:
-        if current_video.PLAYING:
-            msg = 'Playing ' + current_video.info['title']
-        else:
-            msg = 'Nothing playing'
+        current_video.pause()
+        return('OK')
     else:
-        msg = 'Nothing playing'
-
-    return jsonify({'message' : msg})
+        return('No video to pause')
 
 
-@app.route('/video/status', methods=['GET'])
-def video_status():
+@app.route('/resume', methods=['GET'])
+def video_resume():
 
     global current_video
 
-    if current_video:
-        return jsonify({'video' : current_video.info})
+    if current_video is not None:
+        current_video.play()
+        return('OK')
     else:
-        return jsonify({'video' : current_video})
-
+        return('No video to resume')
 
 @app.route('/')
 def index():
 
-    return """Interface:
-    /video/status
-    /video/play
-    /video/stop
-    """
+    return('hi')
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
