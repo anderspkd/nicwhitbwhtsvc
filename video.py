@@ -2,9 +2,9 @@ from __future__ import unicode_literals, print_function
 
 import youtube_dl
 import dbus
+import subprocess
+import os
 
-from subprocess import Popen, PIPE
-from os import putenv, path, setsid
 from time import sleep
 
 # prefex for the dbus process of omxplayer
@@ -33,11 +33,12 @@ class VideoPlayer(object):
 
         # Start the video player
         self.args = args + [self.video_link]
-        self._process = Popen([cmd] + self.args, preexec_fn=setsid)
+        devnull = open(os.devnull, 'w')
+        self._process = subprocess.Popen([cmd] + self.args, stdout=devnull)
         print('Started process with pid: {}'.format(self._process.pid))
 
         # wait until the dbus files are present. Maybe someone removed them...
-        while not path.isfile(TMP_PREFIX + 'pi'):
+        while not os.path.isfile(TMP_PREFIX + 'pi'):
             pass
 
         print('entering _init_dbus()')
@@ -46,9 +47,9 @@ class VideoPlayer(object):
     # Helper functions. Meant to be for internal use only
     def _init_dbus(self):
         with open(TMP_PREFIX + 'pi') as f:
-            putenv('DBUS_SESSION_BUS_ADDRESS', f.read().strip())
+            os.putenv('DBUS_SESSION_BUS_ADDRESS', f.read().strip())
         with open(TMP_PREFIX + 'pi.pid') as f:
-            putenv('DBUS_SESSION_BUS_PID', f.read().strip())
+            os.putenv('DBUS_SESSION_BUS_PID', f.read().strip())
 
         for tries in range(20):
             try:
