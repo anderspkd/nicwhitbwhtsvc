@@ -108,6 +108,13 @@ class VideoPlayer(object):
     def pause(self):
         self.player_iface.Pause()
 
+    def is_alive(self):
+        if self._process:
+            self._process.poll()
+            return self._process.returncode == None
+        else:
+            return False
+
     def play(self):
         self.player_iface.Play()
 
