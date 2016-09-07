@@ -1,5 +1,7 @@
 # nicwhitbwhtsvc
 
+## Current status = fugged
+
 A small webapp which can be used to control the `omxplayer` video
 player program on a raspberry pi.
 
