@@ -11,8 +11,11 @@ def video_play():
     global current_video
     data = request.get_json()
 
+    print(data)
+
     if current_video is not None:
-        return('Stop current video first!')
+        if current_video.is_alive():
+            return('Stop current video first!')
 
     if data is not None:
 
@@ -25,7 +28,7 @@ def video_play():
         except:
             fetch = False
 
-        current_video = VideoPlayer(video, fetch_with_ytdl=fetch)
+        current_video = VideoPlayer(video, fetch_with_ytdl=False if fetch.lower() == 'false' else True)
 
     return('OK')
 
