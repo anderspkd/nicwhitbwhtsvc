@@ -18,7 +18,7 @@ TIME_UNITS = {'us' : 1,
 
 class VideoPlayer(object):
 
-    def __init__(self, url_or_file, fetch_with_ytdl=False, cmd='/home/pi/omxplayer/omxplayer', args=['-o', 'hdmi']):
+    def __init__(self, url_or_file, fetch_with_ytdl=False, cmd='omxplayer', args=['-o', 'hdmi']):
 
         # Set file to play. Can be gotten via. youtube-dl
         if fetch_with_ytdl and self._is_url(url_or_file):
