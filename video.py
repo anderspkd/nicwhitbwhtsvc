@@ -8,12 +8,19 @@ import os
 
 from time import sleep
 
+class ControllerException(Exception):
+    def __init__(self, v):
+        self.v = v
+    def __str__(self):
+        return 'ControllerException: '+ repr(self.v)
+
 # Conversion constants from microseconds to whatever
 TIME_UNITS = {'us' : 1,
               'ms' : 1000,
               's'  : 10**6,
               'm'  : (10**6)*60}
 
+YDL = youtube_dl.YoutubeDL()
 
 class VideoPlayer(object):
 
@@ -21,43 +28,56 @@ class VideoPlayer(object):
 
     def __init__(self, url, fetch=False):
 
-        self.video_pid = None
+        self.video_proc = None
 
         if url:
             if fetch and is_url(url):
-                url = self._fetch_with_ytdl(url)
-            self.video_pid = self._start_video(url)
+                _url = self._fetch_with_ytdl(url)
+                if not _url:
+                    print('YoutubeDL could not extract url from', url)
+                    print('Trying to play url directly')
+                else:
+                    url = _url
+            self.video_proc = self._start_video(url)
 
             if self.is_playing():
+                # Only interested in ControllerExceptions. Fail on
+                # everything else.
                 try:
-                    self.controller = DbusController(self.video_pid)
-                except:
-                    self.controller = Controller(self.video_pid)
+                    self.controller = DbusController(self.video_proc)
+                except ControllerException as e:
+                    print(e)
+                    self.controller = Controller(self.video_proc)
                 print('Using controller: %r' % self.controller)
 
 
     def _start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
-        devnull = open(os.devnull, 'w')
-        pid = subprocess.Popen([player] + player_args + [video_link],
-                               stdout=devnull).pid
-        print('started video with pid', pid)
-        return pid
+        self.devnull = open(os.devnull, 'w')
+        proc = subprocess.Popen([player] + player_args + [video_link],
+                                stdout=self.devnull)
+        print('started video with pid', proc.pid)
+        return proc
 
 
     def _fetch_with_ytdl(self, url):
-        with youtube_dl.YoutubeDL() as ydl:
-            r = ydl.extract_info(url, download=False)
+        r = YDL.extract_info(url, download=False)
         return r['url'] if 'url' in r else ''
 
 
     def is_playing(self):
-        if self.video_pid:
-            try:
-                os.kill(self.video_pid, 0)
-            except:
-                return False
-            return True
+        if self.video_proc:
+            return self.video_proc.poll() == None
         return False
+
+
+    # probably not entirely necessary, but w/e
+    def clean_up(self):
+        self.video_proc = None
+        self.controller = None
+        try:
+            self.devnull.close()
+        except:
+            pass
 
 
 class Controller(object):
@@ -65,8 +85,8 @@ class Controller(object):
     # Only supports killing the video, which is OK since the video
     # will autoplay when the process is started.
 
-    def __init__(self, pid):
-        self._pid = pid
+    def __init__(self, proc):
+        self._proc = proc
 
     def __str__(self):
         return "SimpleController"
@@ -78,10 +98,8 @@ class Controller(object):
         raise NotImplementedError
 
     def quit(self):
-        try:
-            os.kill(self.pid, 9)
-        except:
-            print('Nothing to kill')
+        if self._proc:
+            self._proc.terminate()
 
     def toggle_play(self):
         raise NotImplementedError
@@ -101,7 +119,7 @@ class DbusController(Controller):
     # Could potentially implement everything supported by the
     # omxplayer dbus interface. Only doing simple stuff atm.
 
-    def __init__(self, pid):
+    def __init__(self, proc):
         running = False
         user_file = '/tmp/omxplayerdbus.normal-user'
         pid_file = user_file + '.pid'
@@ -113,9 +131,11 @@ class DbusController(Controller):
 
         # Set appropriate environment variables
         with open(user_file) as f:
-            os.putenv('DBUS_SESSION_BUS_ADDRESS', f.read().strip())
+            e = f.read().strip()
+            os.putenv('DBUS_SESSION_BUS_ADDRESS', e)
         with open(pid_file) as f:
-            os.putenv('DBUS_SESSION_BUS_PID', f.read().strip())
+            e = f.read().strip()
+            os.putenv('DBUS_SESSION_BUS_PID', e)
 
         for tries in range(20):
             # try to connect 20 times, waiting half a second between each
@@ -126,15 +146,15 @@ class DbusController(Controller):
                                              introspect=False)
                 self.root_iface = dbus.Interface(self.player, dbus_interface='org.mpris.MediaPlayer2')
                 self.player_iface = dbus.Interface(self.player, dbus_interface='org.mpris.MediaPlayer2.Player')
-            except:
+            except Exception as e:
                 sleep(0.5)
                 continue
-            print('Found DBus connection in %s trie(s)' % tries+1)
+            print('Found DBus connection in %s trie(s)' % str(tries+1))
             running = True
             break
 
         if not running:
-            raise RuntimeError("Failed to establish dbus connection")
+            raise ControllerException("Failed to establish dbus connection")
 
     def __str__(self):
         return "DBusController"

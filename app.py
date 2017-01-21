@@ -20,6 +20,10 @@ def play_video():
     if video:
         if video.is_playing():
             return('Stop current video before playing a new one.\n')
+        else:
+            print('Cleaning up after last video...')
+            video.clean_up()
+            video = None
 
     data = request.get_json(force=True)
     if 'url' in data:
@@ -32,6 +36,7 @@ def play_video():
     return('ok\n')
 
 
+# Stop is synonymous with quit/exit
 @app.route('/stop', methods=['GET'])
 def stop_video():
 
@@ -39,6 +44,7 @@ def stop_video():
 
     if video:
         video.controller.quit()
+        video.clean_up()
         video = None
 
     return('ok\n')
