@@ -35,7 +35,7 @@ class VideoPlayer(object):
                     self.controller = Controller(self.video_pid)
                 print('Using controller: %r' % self.controller)
 
-            
+
     def _start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
         devnull = open(os.devnull, 'w')
         pid = subprocess.Popen([player] + player_args + [video_link],
@@ -43,7 +43,7 @@ class VideoPlayer(object):
         print('started video with pid', pid)
         return pid
 
-            
+
     def _fetch_with_ytdl(self, url):
         with youtube_dl.YoutubeDL() as ydl:
             r = ydl.extract_info(url, download=False)
@@ -64,7 +64,7 @@ class Controller(object):
 
     # Only supports killing the video, which is OK since the video
     # will autoplay when the process is started.
-    
+
     def __init__(self, pid):
         self._pid = pid
 
@@ -95,7 +95,7 @@ class Controller(object):
     def set_position(self, t, step='s'):
         raise NotImplementedError
 
-            
+
 class DbusController(Controller):
 
     # Could potentially implement everything supported by the
@@ -153,4 +153,3 @@ class DbusController(Controller):
 
     def toggle_play(self):
         self.player_iface.PlayPause()
-

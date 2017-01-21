@@ -16,7 +16,7 @@ def index():
 def play_video():
 
     global video
-    
+
     if video:
         if video.is_playing():
             return('Stop current video before playing a new one.\n')
@@ -36,7 +36,7 @@ def play_video():
 def stop_video():
 
     global video
-    
+
     if video:
         video.controller.quit()
         video = None
@@ -53,7 +53,7 @@ def pause_video():
         video.controller.pause()
 
     return('ok\n')
-        
+
 
 @app.route('/resume', methods=['GET'])
 def resume_video():
