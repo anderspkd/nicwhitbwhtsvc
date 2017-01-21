@@ -1,78 +1,70 @@
 from flask import Flask, request, jsonify
+from functools import wraps
 from video import VideoPlayer
+import re
 
 app = Flask(__name__)
 
-current_video = None
-
-@app.route('/play', methods=['POST'])
-def video_play():
-
-    global current_video
-    data = request.get_json()
-
-    print(data)
-
-    if current_video is not None:
-        if current_video.is_alive():
-            return('Stop current video first!')
-
-    if data is not None:
-
-        try:
-            video = data['url']
-        except KeyError:
-            return('No video link provided!')
-        try:
-            fetch = data['fetch']
-        except:
-            fetch = False
-
-        current_video = VideoPlayer(video, fetch_with_ytdl=False if fetch.lower() == 'false' else True)
-
-    return('OK')
-
-
-@app.route('/stop', methods=['GET'])
-def video_stop():
-
-    global current_video
-
-    if current_video is not None:
-        current_video.stop()
-        current_video = None
-        return('OK')
-    else:
-        return('No video to stop')
-
-
-@app.route('/pause', methods=['GET'])
-def video_pause():
-
-    global current_video
-
-    if current_video is not None:
-        current_video.pause()
-        return('OK')
-    else:
-        return('No video to pause')
-
-
-@app.route('/resume', methods=['GET'])
-def video_resume():
-
-    global current_video
-
-    if current_video is not None:
-        current_video.play()
-        return('OK')
-    else:
-        return('No video to resume')
+video = None
 
 @app.route('/')
 def index():
+    return('Hi :-)\n')
 
-    return('hi')
+
+@app.route('/play', methods=['POST'])
+def play_video():
+
+    global video
+    
+    if video:
+        if video.is_playing():
+            return('Stop current video before playing a new one.\n')
+
+    data = request.get_json(force=True)
+    if 'url' in data:
+        try:
+            fetch = bool(data['remote'])
+        except:
+            fetch = False
+        video = VideoPlayer(data['url'], fetch=fetch)
+
+    return('ok\n')
+
+
+@app.route('/stop', methods=['GET'])
+def stop_video():
+
+    global video
+    
+    if video:
+        video.controller.quit()
+        video = None
+
+    return('ok\n')
+
+
+@app.route('/pause', methods=['GET'])
+def pause_video():
+
+    global video
+
+    if video:
+        video.controller.pause()
+
+    return('ok\n')
+        
+
+@app.route('/resume', methods=['GET'])
+def resume_video():
+
+    global video
+
+    if video:
+        video.controller.play()
+
+    return('ok\n')
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')

@@ -3,12 +3,10 @@ from __future__ import unicode_literals, print_function
 import youtube_dl
 import dbus
 import subprocess
+from validators.url import url as is_url
 import os
 
 from time import sleep
-
-# prefex for the dbus process of omxplayer
-TMP_PREFIX = '/tmp/omxplayerdbus.'
 
 # Conversion constants from microseconds to whatever
 TIME_UNITS = {'us' : 1,
@@ -16,40 +14,111 @@ TIME_UNITS = {'us' : 1,
               's'  : 10**6,
               'm'  : (10**6)*60}
 
+
 class VideoPlayer(object):
 
-    def __init__(self, url_or_file, fetch_with_ytdl=False, cmd='omxplayer', args=['-o', 'hdmi']):
+    controller = None
 
-        # Set file to play. Can be gotten via. youtube-dl
-        if fetch_with_ytdl and self._is_url(url_or_file):
-            print('fetching with youtube-dl')
-            self.ydl_result = self._fetch_with_ytdl(url_or_file)
-            if 'url' in self.ydl_result:
-                self.video_link = self.ydl_result['url']
-            else:
-                raise NameError('could not fetch {} with youtube-dl'.format(url_or_file))
-        else:
-            self.video_link = url_or_file
+    def __init__(self, url, fetch=False):
 
-        # Start the video player
-        self.args = args + [self.video_link]
+        self.video_pid = None
+
+        if url:
+            if fetch and is_url(url):
+                url = self._fetch_with_ytdl(url)
+            self.video_pid = self._start_video(url)
+
+            if self.is_playing():
+                try:
+                    self.controller = DbusController(self.video_pid)
+                except:
+                    self.controller = Controller(self.video_pid)
+                print('Using controller: %r' % self.controller)
+
+            
+    def _start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
         devnull = open(os.devnull, 'w')
-        self._process = subprocess.Popen([cmd] + self.args, stdout=devnull)
+        pid = subprocess.Popen([player] + player_args + [video_link],
+                               stdout=devnull).pid
+        print('started video with pid', pid)
+        return pid
 
-        # wait until the dbus files are present. Maybe someone removed them...
-        while not os.path.isfile(TMP_PREFIX + 'pi'):
+            
+    def _fetch_with_ytdl(self, url):
+        with youtube_dl.YoutubeDL() as ydl:
+            r = ydl.extract_info(url, download=False)
+        return r['url'] if 'url' in r else ''
+
+
+    def is_playing(self):
+        if self.video_pid:
+            try:
+                os.kill(self.video_pid, 0)
+            except:
+                return False
+            return True
+        return False
+
+
+class Controller(object):
+
+    # Only supports killing the video, which is OK since the video
+    # will autoplay when the process is started.
+    
+    def __init__(self, pid):
+        self._pid = pid
+
+    def __str__(self):
+        return "SimpleController"
+
+    def play(self):
+        raise NotImplementedError
+
+    def stop(self):
+        raise NotImplementedError
+
+    def quit(self):
+        try:
+            os.kill(self.pid, 9)
+        except:
+            print('Nothing to kill')
+
+    def toggle_play(self):
+        raise NotImplementedError
+
+    def mute(self):
+        raise NotImplementedError
+
+    def seek(self, t, step='s'):
+        raise NotImplementedError
+
+    def set_position(self, t, step='s'):
+        raise NotImplementedError
+
+            
+class DbusController(Controller):
+
+    # Could potentially implement everything supported by the
+    # omxplayer dbus interface. Only doing simple stuff atm.
+
+    def __init__(self, pid):
+        running = False
+        user_file = '/tmp/omxplayerdbus.normal-user'
+        pid_file = user_file + '.pid'
+
+        while not (os.path.isfile(user_file)
+                   and os.path.isfile(pid_file)):
+            sleep(0.2)
             pass
 
-        self._init_dbus()
-
-    # Helper functions. Meant to be for internal use only
-    def _init_dbus(self):
-        with open(TMP_PREFIX + 'pi') as f:
+        # Set appropriate environment variables
+        with open(user_file) as f:
             os.putenv('DBUS_SESSION_BUS_ADDRESS', f.read().strip())
-        with open(TMP_PREFIX + 'pi.pid') as f:
+        with open(pid_file) as f:
             os.putenv('DBUS_SESSION_BUS_PID', f.read().strip())
 
         for tries in range(20):
+            # try to connect 20 times, waiting half a second between each
             try:
                 bus = dbus.SessionBus()
                 self.player = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
@@ -58,82 +127,30 @@ class VideoPlayer(object):
                 self.root_iface = dbus.Interface(self.player, dbus_interface='org.mpris.MediaPlayer2')
                 self.player_iface = dbus.Interface(self.player, dbus_interface='org.mpris.MediaPlayer2.Player')
             except:
-                print('.', end='')
                 sleep(0.5)
                 continue
+            print('Found DBus connection in %s trie(s)' % tries+1)
+            running = True
             break
-        print(' found dbus connection')
 
+        if not running:
+            raise RuntimeError("Failed to establish dbus connection")
 
-    # TODO: clear object perhaps?
-    def _kill(self):
-        print('Exiting...')
-        self.root_iface.Quit()
-
-    def _is_url(self, url):
-        """Test if [url] is a valid url"""
-
-        # TODO: make more serious
-        return url[:4] == 'http' or url[:5] == 'https'
-
-    def _fetch_with_ytdl(self, url):
-        """Fetch a direct file url with youtube-dl.
-        Should return the highest resolution avaliable
-        """
-
-        ydl = youtube_dl.YoutubeDL()
-        r = ydl.extract_info(url, download=False)
-
-        if 'formats' in r:
-            fmt = [x for x in r['formats'] if 'resolution' in x]
-            def res_cmp(it):
-                rs = it['resolution'].split('x')
-                return int(rs[0]) + int(rs[1])
-            video_link = sorted(fmt, key=res_cmp, reverse=True)[0]
-            return video_link
-        else:
-            # Make less generic
-            raise Exception
-
-    def _convert_num(self, t, step, fn):
-        try:
-            multp = TIME_UNITS[step]
-            r = str(int(t) * multp)
-            return fn(r)
-        except:
-            print('"_convert_num" failed with args: {}, {}, {}'.format(t, step, fn))
-            raise
-
-    # Outward interface
-    def pause(self):
-        self.player_iface.Pause()
-
-    def is_alive(self):
-        if self._process:
-            self._process.poll()
-            return self._process.returncode == None
-        else:
-            return False
+    def __str__(self):
+        return "DBusController"
 
     def play(self):
         self.player_iface.Play()
 
     def stop(self):
-        self._kill()
+        self.player_iface.Stop()
+
+    def quit(self):
+        self.root_iface.Quit()
+
+    def pause(self):
+        self.player_iface.Pause()
 
     def toggle_play(self):
         self.player_iface.PlayPause()
 
-    def mute(self):
-        self.player_iface.Mute()
-
-    def unmute(self):
-        self.player_iface.Unmute()
-
-    def seek(self, t, step='s'):
-        to = self._convert_num(t, step, dbus.Int64)
-        self.player_iface.Seek(to)
-
-    def set_position(self, t, step='s'):
-        to = self._convert_num(t, step, dbus.Int64)
-        self.player_iface.SetPosition(to)
