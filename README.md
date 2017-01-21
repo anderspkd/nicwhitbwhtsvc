@@ -14,3 +14,12 @@ which is also my motivation for writing this application.
 
 Uses `youtube-dl`, `flask` and `dbus-python`, so install
 that.
+
+# DBus issues
+
+DBus seems to behave badly -- or maybe I just don't know how to use it
+properly. To "fix" issues (such as failing to use `DbusController` any
+or all of the following
+
+- remove the socket file in `/var/run/dbus/` and reboot
+- remove the `omxplayerdbus.*` files in `/tmp/`
