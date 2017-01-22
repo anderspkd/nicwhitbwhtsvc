@@ -3,16 +3,50 @@ from __future__ import unicode_literals, print_function
 import youtube_dl
 import dbus
 import subprocess
+import requests
 from validators.url import url as is_url
 import os
 
 from time import sleep
 
+# Thrown when controller initialization fails
 class ControllerException(Exception):
     def __init__(self, v):
         self.v = v
     def __str__(self):
         return 'ControllerException: '+ repr(self.v)
+
+# Thrown when we cannot fetch a url.
+class FetchException(Exception):
+    def __init__(self, url, e):
+        self.url = url
+        self.e = e
+    def __str__(self):
+        return ('Url ' + repr(self.url) +
+                ' raised generic FetchException:\n' + repr(self.e))
+
+# fetch=True excetions
+class InvalidUrlException(FetchException):
+    def __init__(self, url):
+        self.url = url
+    def __str__(self):
+        return 'Invalid url: ' + repr(self.url)
+
+class BadStatusCodeException(FetchException):
+    def __init__(self, url, status_code):
+        self.url = url
+        self.status_code = status_code
+    def __str__(self):
+        return ('Url ' + repr(self.url) +
+                ' returned bad status-code (' +
+                repr(self.status_code) + ')')
+
+class YoutubeDLException(FetchException):
+    def __init__(self, url):
+        self.url = url
+    def __str__(self):
+        return 'Youtube-dl could not fetch resource at ' + repr(self.url)
+
 
 # Conversion constants from microseconds to whatever
 TIME_UNITS = {'us' : 1,
@@ -24,34 +58,46 @@ YDL = youtube_dl.YoutubeDL()
 
 class VideoPlayer(object):
 
+    # How we access [url] depends on fetch:
+    # fetch=False:
+    #  1) test that [url] is valid
+    #  2) test that [url] points at something (i.e., returns code 200)
+    #  3) fetch it with youtube-dl
+    #
+    # fetch=True:
+    #  1) test if [url] is a local file
+    #  2) if it is, play it. If not;
+    #  3) test if it is reachable (as above).
+
     controller = None
 
     def __init__(self, url, fetch=False):
 
         self.video_proc = None
 
-        if url:
-            if fetch and is_url(url):
-                _url = self._fetch_with_ytdl(url)
-                if not _url:
-                    print('YoutubeDL could not extract url from', url)
-                    print('Trying to play url directly')
-                else:
-                    url = _url
-            self.video_proc = self._start_video(url)
+        try:
+            # Fetch resource using a strategy depending on [fetch].
+            if fetch:
+                _url = self.__fetch_with_ytdl(url)
+            else:
+                _url = self.__fetch_directly(url)
+            self.video_proc = self.__start_video(_url)
 
-            if self.is_playing():
-                # Only interested in ControllerExceptions. Fail on
-                # everything else.
+
+            # If the video started, initialize a DbusController or a
+            # generic Controller if that Dbus shits itself.
+            if self.video_proc and self.is_playing():
                 try:
                     self.controller = DbusController(self.video_proc)
                 except ControllerException as e:
                     print(e)
                     self.controller = Controller(self.video_proc)
-                print('Using controller: %r' % self.controller)
+                print('Using controller:', repr(self.controller))
+        except FetchException as fex:
+            print(fex)
 
 
-    def _start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
+    def __start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
         self.devnull = open(os.devnull, 'w')
         proc = subprocess.Popen([player] + player_args + [video_link],
                                 stdout=self.devnull)
@@ -59,19 +105,59 @@ class VideoPlayer(object):
         return proc
 
 
-    def _fetch_with_ytdl(self, url):
-        r = YDL.extract_info(url, download=False)
-        return r['url'] if 'url' in r else ''
+    def __validate_url(self, url, query_url=False):
+        """Test if [url] is valid. If [query_url] is True, will also do a HEAD
+        request to check if the resource is actually avaliable.
+
+        """
+        if not is_url(url):
+            raise InvalidUrlException(url)
+        if query_url:
+            sc = None
+            try:
+                sc = requests.head(url).status_code
+            except Exception as e:
+                raise FetchException(url, e)
+            if sc != 200:
+                raise BadStatusCodeException(url, sc)
+        return True # ftso. comparison and sane behaviour
+
+
+    def __fetch_directly(self, url):
+        """Fetches a resource directly. For use on files which are directly
+        avaliable, e.g., www.example.com/bla.mp4 or file:///bla.mp4.
+
+        """
+        if os.path.isfile(url):
+            return url
+        self.__validate_url(url, query_url=True)
+        return url
+
+
+    def __fetch_with_ytdl(self, url):
+        """Fetches the resource that might be avaliable at [url] using
+        Youtube-dl
+
+        """
+        # We don't want a HEAD request here, as ytdl already does one.
+        self.__validate_url(url)
+        try:
+            # Extract with YDL.
+            ydlr = YDL.extract_info(url, download=False)
+            return ydlr['url']
+        except Exception as e:
+            raise YoutubeDLException(url)
 
 
     def is_playing(self):
+        """Checks if the process corresponding to the video is still alive."""
         if self.video_proc:
             return self.video_proc.poll() == None
         return False
 
 
-    # probably not entirely necessary, but w/e
     def clean_up(self):
+        """Cleans up the object."""
         self.video_proc = None
         self.controller = None
         try:
