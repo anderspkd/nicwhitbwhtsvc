@@ -1,8 +1,6 @@
 from __future__ import unicode_literals, print_function
 
-
 # Exceptions used by VideoPlayer and Controller classes.
-
 
 class ControllerException(Exception):
     """Indicates something related to the Controller went wrong. Currently
@@ -15,7 +13,6 @@ class ControllerException(Exception):
         return 'ControllerException: '+ repr(self.v)
 
 
-
 class FetchException(Exception):
     """Parent class for all url fetch/check related exceptions."""
     def __init__(self, url, e):
@@ -26,14 +23,12 @@ class FetchException(Exception):
                 ' raised generic FetchException:\n' + repr(self.e))
 
 
-
 class InvalidUrlException(FetchException):
     """Indicates an invalid url."""
     def __init__(self, url):
         self.url = url
     def __str__(self):
         return 'Invalid url: ' + repr(self.url)
-
 
 
 class BadStatusCodeException(FetchException):
@@ -45,7 +40,6 @@ class BadStatusCodeException(FetchException):
         return ('Url ' + repr(self.url) +
                 ' returned bad status-code (' +
                 repr(self.status_code) + ')')
-
 
 
 class YoutubeDLException(FetchException):
