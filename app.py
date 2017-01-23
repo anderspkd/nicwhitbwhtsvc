@@ -7,6 +7,12 @@ app = Flask(__name__)
 
 video = None
 
+def clear_current_video():
+    global video
+    if video:
+        video.clean_up()
+        video = None
+
 @app.route('/')
 def index():
     return('Hi :-)\n')
@@ -22,8 +28,7 @@ def play_video():
             return('Stop current video before playing a new one.\n')
         else:
             print('Cleaning up after last video...')
-            video.clean_up()
-            video = None
+            clear_current_video()
 
     data = request.get_json(force=True)
     if 'url' in data:
@@ -40,12 +45,9 @@ def play_video():
 @app.route('/stop', methods=['GET'])
 def stop_video():
 
-    global video
-
     if video:
         video.controller.quit()
-        video.clean_up()
-        video = None
+        clear_current_video()
 
     return('ok\n')
 
