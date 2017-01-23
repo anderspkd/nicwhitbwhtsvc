@@ -43,7 +43,6 @@ class VideoPlayer(object):
                 _url = self.__fetch_directly(url)
             self.video_proc = self.__start_video(_url)
 
-
             # If the video started, initialize a DbusController or a
             # generic Controller if that Dbus shits itself.
             if self.video_proc and self.is_playing():
@@ -124,5 +123,3 @@ class VideoPlayer(object):
             self.devnull.close()
         except:
             pass
-
-

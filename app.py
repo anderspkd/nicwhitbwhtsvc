@@ -55,8 +55,6 @@ def stop_video():
 @app.route('/pause', methods=['GET'])
 def pause_video():
 
-    global video
-
     if video:
         video.controller.pause()
 
@@ -65,8 +63,6 @@ def pause_video():
 
 @app.route('/resume', methods=['GET'])
 def resume_video():
-
-    global video
 
     if video:
         video.controller.play()
