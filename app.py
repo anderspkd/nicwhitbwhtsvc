@@ -1,15 +1,13 @@
 from flask import Flask, request, jsonify
-from functools import wraps
 from video import VideoPlayer
-import re
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static')
 
 video = None
 
 @app.route('/')
 def index():
-    return('Hi :-)\n')
+    return app.send_static_file('index.html')
 
 
 @app.route('/play', methods=['POST'])
