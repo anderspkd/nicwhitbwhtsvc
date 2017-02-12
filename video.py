@@ -24,28 +24,30 @@ class VideoPlayer(object):
     url = ''
     title = ''
 
-    def __init__(self, url, fetch=False):
+    def __init__(self, url, fetch=False, force_fetch=False):
         self._video_proc = None
         self.url = url
 
-        logger.info('Creating VideoPlayer with url=%r, fetch=%r', url, fetch)
+        logger.debug('Creating VideoPlayer with url=%r, fetch=%r, force_fetch=%r', url, fetch, force_fetch)
 
         try:
-            # fetch video url
-            if fetch:
-                if url in url_cache:
-                    self.direct_url = url_cache[url]
-                else:
-                    self.direct_url = self.__fetch_with_ytdl(url)
-                    url_cache[url] = self.direct_url
+            if not force_fetch and url in url_cache:
+                logger.debug('Using cached url: key=%r, value=%r', url, url_cache[url])
+                self.direct_url = url_cache[url]
             else:
-                self.direct_url = self.__fetch_directly(url)
+                if fetch:
+                    self.direct_url = self._fetch_with_ytdl(url)
+                else:
+                    self.direct_url = self._fetch_directly(url)
+
+                logger.debug('Caching url: key=%r, value=%r', url, self.direct_url)
+                url_cache[url] = self.direct_url
 
             logger.info('direct url: %r', self.direct_url)
 
             # start video if we got
             if self.direct_url:
-                self.__start_video(self.direct_url)
+                self._start_video(self.direct_url)
 
 
             # If the video started, instantiate a controller
@@ -71,7 +73,7 @@ class VideoPlayer(object):
         return s
 
 
-    def __start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
+    def _start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
         self.devnull = open(os.devnull, 'w')
         proc = subprocess.Popen([player] + player_args + [video_link],
                                 stdout=self.devnull)
@@ -79,7 +81,7 @@ class VideoPlayer(object):
         self._video_proc = proc
 
 
-    def __validate_url(self, url, query_url=False):
+    def _validate_url(self, url, query_url=False):
         """Test if [url] is valid. If [query_url] is True, will also do a HEAD
         request to check if the resource is actually avaliable.
 
@@ -97,22 +99,22 @@ class VideoPlayer(object):
         return True # ftso. comparison and sane behaviour
 
 
-    def __fetch_directly(self, url):
+    def _fetch_directly(self, url):
         """Return [url] if it points to a local file, or it points to
         something reachable on the web.
 
         """
-        if os.path.isfile(url) or self.__validate_url(url, query_url=True):
+        if os.path.isfile(url) or self._validate_url(url, query_url=True):
             self.title = url.split('/')[-1] # set title to file part of url
             return url
         return None
 
-    def __fetch_with_ytdl(self, url):
+    def _fetch_with_ytdl(self, url):
         """Fetches the resource that might be avaliable at [url] using
         Youtube-dl.
 
         """
-        self.__validate_url(url)
+        self._validate_url(url)
         try:
             # Extract with YDL.
             ydlr = YDL.extract_info(url, download=False)
