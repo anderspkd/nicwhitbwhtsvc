@@ -9,51 +9,66 @@ import os
 from errors import *
 from controllers import *
 
-# Conversion constants from microseconds to whatever
-TIME_UNITS = {'us' : 1,
-              'ms' : 1000,
-              's'  : 10**6,
-              'm'  : (10**6)*60}
-
 YDL = youtube_dl.YoutubeDL()
 
 logger = logging.getLogger('video')
+
+# for caching urls fetched with ytdl
+url_cache = {}
 
 class VideoPlayer(object):
 
     controller = None
 
+    # used for pretty-printing
+    url = ''
+    title = ''
+
     def __init__(self, url, fetch=False):
-        self.video_proc = None
+        self._video_proc = None
+        self.url = url
+
         logger.info('Creating VideoPlayer with url=%r, fetch=%r', url, fetch)
+
         try:
             # fetch video url
             if fetch:
-                _url = self.__fetch_with_ytdl(url)
+                if url in url_cache:
+                    self.direct_url = url_cache[url]
+                else:
+                    self.direct_url = self.__fetch_with_ytdl(url)
+                    url_cache[url] = self.direct_url
             else:
-                _url = self.__fetch_directly(url)
-            self.url = _url
-            self.video_proc = self.__start_video(self.url)
+                self.direct_url = self.__fetch_directly(url)
+
+            logger.info('direct url: %r', self.direct_url)
+
+            # start video if we got
+            if self.direct_url:
+                self.__start_video(self.direct_url)
 
 
             # If the video started, instantiate a controller
             # object. Will fall back to a generic one if the DBus one
             # didn't work.
-            if self.video_proc and self.is_playing():
+            if self.is_playing():
                 try:
-                    self.controller = DbusController(self.video_proc)
+                    self.controller = DbusController(self._video_proc)
                 except ControllerException as e:
                     logger.warn(e)
-                    self.controller = Controller(self.video_proc)
+                    self.controller = Controller(self._video_proc)
                 logger.info('Using controller: %r', repr(self.controller))
+            else:
+                logger.info('No video started')
         except FetchException as fex:
             logger.warn(fex)
 
 
     def __str__(self):
-        if not self.video_proc or not self.is_playing():
-            return '(DEAD) ' + self.url
-        return self.url
+        s = '%s (%s)' % (self.title, self.url)
+        if not self.is_playing():
+            return '(DEAD) ' + s
+        return s
 
 
     def __start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
@@ -61,7 +76,7 @@ class VideoPlayer(object):
         proc = subprocess.Popen([player] + player_args + [video_link],
                                 stdout=self.devnull)
         logger.info('Started video with pid: %d', proc.pid)
-        return proc
+        self._video_proc = proc
 
 
     def __validate_url(self, url, query_url=False):
@@ -87,11 +102,10 @@ class VideoPlayer(object):
         something reachable on the web.
 
         """
-        if os.path.isfile(url):
+        if os.path.isfile(url) or self.__validate_url(url, query_url=True):
+            self.title = url.split('/')[-1] # set title to file part of url
             return url
-        self.__validate_url(url, query_url=True)
-        return url
-
+        return None
 
     def __fetch_with_ytdl(self, url):
         """Fetches the resource that might be avaliable at [url] using
@@ -102,6 +116,10 @@ class VideoPlayer(object):
         try:
             # Extract with YDL.
             ydlr = YDL.extract_info(url, download=False)
+            try:
+                self.title = ydlr['title']
+            except:
+                self.title = 'No title'
             return ydlr['url']
         except Exception as e:
             raise YoutubeDLException(url)
@@ -109,14 +127,14 @@ class VideoPlayer(object):
 
     def is_playing(self):
         """Checks if the process corresponding to the video is still alive."""
-        if self.video_proc:
-            return self.video_proc.poll() == None
+        if self._video_proc:
+            return self._video_proc.poll() == None
         return False
 
 
     def clean_up(self):
         """Cleans up the object."""
-        self.video_proc = None
+        self._video_proc = None
         self.controller = None
         try:
             self.devnull.close()
