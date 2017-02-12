@@ -6,6 +6,12 @@ import logging
 from errors import ControllerException
 from time import sleep
 
+# Conversion constants from microseconds to whatever
+TIME_UNITS = {'us' : 1,
+              'ms' : 1000,
+              's'  : 10**6,
+              'm'  : (10**6)*60}
+
 class Controller(object):
 
     # Only supports killing the video, which is OK since the video
@@ -22,6 +28,9 @@ class Controller(object):
     def _info(self, msg):
         self.logger.info('[%d] %s' % (self._pid, msg))
 
+    def _warn(self, msg):
+        self.logger.warn('[%d] %s' % (self._pid, msg))
+
     def play(self):
         raise NotImplementedError
 
@@ -29,8 +38,11 @@ class Controller(object):
         raise NotImplementedError
 
     def quit(self):
-        if self._proc:
-            self._proc.terminate()
+        try:
+            if self._proc:
+                self._proc.terminate()
+        except Exception as e:
+            self._warn('Exception while terminating process. Is it dead?\n%s' % e)
 
     def toggle_play(self):
         raise NotImplementedError
@@ -92,17 +104,35 @@ class DbusController(Controller):
         return "DBusController"
 
     def play(self):
-        self._info('play')
-        self.player_iface.Play()
+        try:
+            self._info('play')
+            self.player_iface.Play()
+        except DBusException as dbe:
+            self._warn("Got DBusException while executing 'play'. Did the video exit?\n%s" % dbe)
+        except Exception as e:
+            self._warn("Unexpected exception in 'play':\n%s" % e)
+            raise
 
     def stop(self):
-        self._info('stop')
-        self.player_iface.Stop()
+        try:
+            self._info('stop')
+            self.player_iface.Stop()
+        except DBusException as dbe:
+            self._warn("DBusException while stopping video.\n%s" % dbe)
+        except Exception as e:
+            self._warn("Unexpected exception while stopping video\n%s" % e)
+            raise
 
     def quit(self):
-        self._info('quit')
-        self.root_iface.Quit()
-        Controller.quit(self)
+        try:
+            self._info('quit')
+            self.root_iface.Quit()
+            Controller.quit(self)
+        except DBusException as dbe:
+            self._warn("DBusException while quitting video.\n%s" % dbe)
+        except Exception as e:
+            self._warn(e)
+            raise
 
     def pause(self):
         self._info('pause')
