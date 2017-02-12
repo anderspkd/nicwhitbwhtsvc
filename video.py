@@ -3,6 +3,7 @@ from __future__ import unicode_literals, print_function
 import youtube_dl
 import subprocess
 import requests
+import logging
 from validators.url import url as is_url
 import os
 from errors import *
@@ -16,52 +17,50 @@ TIME_UNITS = {'us' : 1,
 
 YDL = youtube_dl.YoutubeDL()
 
-class VideoPlayer(object):
+logger = logging.getLogger('video')
 
-    # How we access [url] depends on fetch:
-    # fetch=False:
-    #  1) test that [url] is valid
-    #  2) test that [url] points at something (i.e., returns code 200)
-    #  3) fetch it with youtube-dl
-    #
-    # fetch=True:
-    #  1) test if [url] is a local file
-    #  2) if it is, play it. If not;
-    #  3) test if it is reachable (as above).
+class VideoPlayer(object):
 
     controller = None
 
     def __init__(self, url, fetch=False):
-
         self.video_proc = None
-
+        logger.info('Creating VideoPlayer with url=%r, fetch=%r', url, fetch)
         try:
-            # Fetch resource using a strategy depending on [fetch].
+            # fetch video url
             if fetch:
                 _url = self.__fetch_with_ytdl(url)
             else:
                 _url = self.__fetch_directly(url)
-            self.video_proc = self.__start_video(_url)
+            self.url = _url
+            self.video_proc = self.__start_video(self.url)
 
 
-            # If the video started, initialize a DbusController or a
-            # generic Controller if that Dbus shits itself.
+            # If the video started, instantiate a controller
+            # object. Will fall back to a generic one if the DBus one
+            # didn't work.
             if self.video_proc and self.is_playing():
                 try:
                     self.controller = DbusController(self.video_proc)
                 except ControllerException as e:
-                    print(e)
+                    logger.warn(e)
                     self.controller = Controller(self.video_proc)
-                print('Using controller:', repr(self.controller))
+                logger.info('Using controller: %r', repr(self.controller))
         except FetchException as fex:
-            print(fex)
+            logger.warn(fex)
+
+
+    def __str__(self):
+        if not self.video_proc or not self.is_playing():
+            return '(DEAD) ' + self.url
+        return self.url
 
 
     def __start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
         self.devnull = open(os.devnull, 'w')
         proc = subprocess.Popen([player] + player_args + [video_link],
                                 stdout=self.devnull)
-        print('started video with pid', proc.pid)
+        logger.info('Started video with pid: %d', proc.pid)
         return proc
 
 
@@ -84,8 +83,8 @@ class VideoPlayer(object):
 
 
     def __fetch_directly(self, url):
-        """Fetches a resource directly. For use on files which are directly
-        avaliable, e.g., www.example.com/bla.mp4 or file:///bla.mp4.
+        """Return [url] if it points to a local file, or it points to
+        something reachable on the web.
 
         """
         if os.path.isfile(url):
@@ -96,10 +95,9 @@ class VideoPlayer(object):
 
     def __fetch_with_ytdl(self, url):
         """Fetches the resource that might be avaliable at [url] using
-        Youtube-dl
+        Youtube-dl.
 
         """
-        # We don't want a HEAD request here, as ytdl already does one.
         self.__validate_url(url)
         try:
             # Extract with YDL.
@@ -124,5 +122,3 @@ class VideoPlayer(object):
             self.devnull.close()
         except:
             pass
-
-

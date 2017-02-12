@@ -2,9 +2,9 @@ from __future__ import unicode_literals, print_function
 
 import dbus
 import os
+import logging
 from errors import ControllerException
 from time import sleep
-
 
 class Controller(object):
 
@@ -12,10 +12,15 @@ class Controller(object):
     # will autoplay when the process is started.
 
     def __init__(self, proc):
+        self.logger = logging.getLogger(str(self))
         self._proc = proc
+        self._pid = self._proc.pid
 
     def __str__(self):
         return "SimpleController"
+
+    def _info(self, msg):
+        self.logger.info('[%d] %s' % (self._pid, msg))
 
     def play(self):
         raise NotImplementedError
@@ -46,7 +51,8 @@ class DbusController(Controller):
     # omxplayer dbus interface. Only doing simple stuff atm.
 
     def __init__(self, proc):
-        running = False
+        Controller.__init__(self, proc)
+        self.running = False
         user_file = '/tmp/omxplayerdbus.normal-user'
         pid_file = user_file + '.pid'
 
@@ -75,27 +81,33 @@ class DbusController(Controller):
             except Exception as e:
                 sleep(0.5)
                 continue
-            print('Found DBus connection in %s trie(s)' % str(tries+1))
-            running = True
+            self._info('Found DBus connection in %r trie(s)' % (tries+1))
+            self.running = True
             break
 
-        if not running:
+        if not self.running:
             raise ControllerException("Failed to establish dbus connection")
 
     def __str__(self):
         return "DBusController"
 
     def play(self):
+        self._info('play')
         self.player_iface.Play()
 
     def stop(self):
+        self._info('stop')
         self.player_iface.Stop()
 
     def quit(self):
+        self._info('quit')
         self.root_iface.Quit()
+        Controller.quit(self)
 
     def pause(self):
+        self._info('pause')
         self.player_iface.Pause()
 
     def toggle_play(self):
+        self._info('toggle_play')
         self.player_iface.PlayPause()

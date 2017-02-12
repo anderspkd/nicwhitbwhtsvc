@@ -1,14 +1,19 @@
 from flask import Flask, request, jsonify
 from video import VideoPlayer
 
-app = Flask(__name__, static_url_path='/static')
+app = Flask(__name__)
+
+import logging
+formatter = logging.Formatter('%(asctime)s %(name)-15.15s %(levelname)-5.5s - %(message)s')
+root_logger = logging.getLogger()
+fh = logging.FileHandler('output.log')
+fh.setFormatter(formatter)
+root_logger.addHandler(fh)
+root_logger.setLevel(logging.DEBUG)
+
+logger = logging.getLogger('video')
 
 video = None
-
-@app.route('/')
-def index():
-    return app.send_static_file('index.html')
-
 
 @app.route('/play', methods=['POST'])
 def play_video():
@@ -19,7 +24,7 @@ def play_video():
         if video.is_playing():
             return('Stop current video before playing a new one.\n')
         else:
-            print('Cleaning up after last video...')
+            logger.info('Cleaning up after last video...')
             video.clean_up()
             video = None
 
