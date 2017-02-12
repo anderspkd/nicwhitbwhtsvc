@@ -68,7 +68,3 @@ def resume_video():
         video.controller.play()
 
     return('ok\n')
-
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
