@@ -35,6 +35,8 @@ def play_video():
         except:
             fetch = False
         video = VideoPlayer(data['url'], fetch=fetch)
+        logger.info('Playing %s', video)
+        return(video.title)
 
     return('ok\n')
 
