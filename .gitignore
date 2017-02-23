@@ -2,3 +2,4 @@
 **/flask/
 dbus-venv/
 *.pyc
+/output.log

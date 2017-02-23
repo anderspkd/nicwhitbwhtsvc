@@ -1,22 +1,20 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from video import VideoPlayer
+from util import as_bool, us2string
 
 app = Flask(__name__)
 
+import logging
+formatter = logging.Formatter('%(asctime)s %(name)-15.15s %(levelname)-7.7s - %(message)s')
+root_logger = logging.getLogger()
+fh = logging.FileHandler('output.log')
+fh.setFormatter(formatter)
+root_logger.addHandler(fh)
+root_logger.setLevel(logging.DEBUG)
+
+logger = logging.getLogger('video')
+
 video = None
-
-
-def clear_current_video():
-    global video
-    if video:
-        video.clean_up()
-        video = None
-
-
-@app.route('/')
-def index():
-    return('Hi :-)\n')
-
 
 @app.route('/play', methods=['POST'])
 def play_video():
@@ -27,16 +25,20 @@ def play_video():
         if video.is_playing():
             return('Stop current video before playing a new one.\n')
         else:
-            print('Cleaning up after last video...')
-            clear_current_video()
+            logger.info('Cleaning up after last video...')
+            video.clean_up()
+            video = None
 
     data = request.get_json(force=True)
     if 'url' in data:
-        try:
-            fetch = bool(data['remote'])
-        except:
-            fetch = False
-        video = VideoPlayer(data['url'], fetch=fetch)
+        url = data['url']
+
+        fetch = as_bool(data.get('fetch', False))
+        force = as_bool(data.get('force', False))
+
+        video = VideoPlayer(data['url'], fetch=fetch, force_fetch=force)
+        logger.info('Playing %s', video)
+        return(video.title)
 
     return('ok\n')
 
@@ -45,15 +47,20 @@ def play_video():
 @app.route('/stop', methods=['GET'])
 def stop_video():
 
+    global video
+
     if video:
         video.controller.quit()
-        clear_current_video()
+        video.clean_up()
+        video = None
 
     return('ok\n')
 
 
 @app.route('/pause', methods=['GET'])
 def pause_video():
+
+    global video
 
     if video:
         video.controller.pause()
@@ -64,11 +71,37 @@ def pause_video():
 @app.route('/resume', methods=['GET'])
 def resume_video():
 
+    global video
+
     if video:
         video.controller.play()
 
     return('ok\n')
 
+@app.route('/status', methods=['GET'])
+def video_status():
+    global video
+    if video:
+        pos = video.controller.position()
+        dur = video.controller.duration()
+        return(us2string(dur - pos))
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    return('ok\n')
+
+@app.route('/metadata', methods=['GET'])
+def video_metadata():
+    global video
+    if video:
+        video.controller.metadata()
+    return('ok\n')
+
+@app.route('/seek', methods=['POST'])
+def video_seek():
+    global video
+    if video:
+        data = request.get_json(force=True)
+        offset = data.get('offset', False)
+        unit = data.get('unit', 's')
+        if offset:
+            return str(video.controller.seek(offset, unit=unit))
+    return('ok\n')
