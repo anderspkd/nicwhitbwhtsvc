@@ -25,14 +25,14 @@ class VideoPlayer(object):
     url = ''
     title = ''
 
-    def __init__(self, url, fetch=False, force_fetch=False):
+    def __init__(self, url, fetch=False, try_cache=True):
         self._video_proc = None
         self.url = url
 
         logger.debug('Creating VideoPlayer with url=%r, fetch=%r, force_fetch=%r', url, fetch, force_fetch)
 
         try:
-            if not force_fetch and url in url_cache:
+            if try_cache and url in url_cache:
                 logger.debug('Using cached url: key=%r, value=%r', url, url_cache[url])
                 self.direct_url = url_cache[url]
             else:

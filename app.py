@@ -33,11 +33,8 @@ def play_video():
     data = request.get_json(force=True)
     if 'url' in data:
         url = data['url']
-
         fetch = as_bool(data.get('fetch', False))
-        force = as_bool(data.get('force', False))
-
-        video = VideoPlayer(url, fetch=fetch, force_fetch=force)
+        video = VideoPlayer(url, fetch=fetch)
         logger.info('Playing %s', video)
         return(video.title)
 
