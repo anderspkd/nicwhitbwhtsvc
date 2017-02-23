@@ -1,17 +1,17 @@
-from flask import Flask, request, jsonify
-from functools import wraps
+from flask import Flask, request
 from video import VideoPlayer
-import re
 
 app = Flask(__name__)
 
 video = None
+
 
 def clear_current_video():
     global video
     if video:
         video.clean_up()
         video = None
+
 
 @app.route('/')
 def index():
