@@ -7,7 +7,7 @@ import logging
 from validators.url import url as is_url
 import os
 from errors import *
-from controllers import *
+from controllers import Controller, DbusController
 
 YDL = youtube_dl.YoutubeDL()
 
@@ -15,6 +15,7 @@ logger = logging.getLogger('video')
 
 # for caching urls fetched with ytdl
 url_cache = {}
+
 
 class VideoPlayer(object):
 
@@ -49,7 +50,6 @@ class VideoPlayer(object):
             if self.direct_url:
                 self._start_video(self.direct_url)
 
-
             # If the video started, instantiate a controller
             # object. Will fall back to a generic one if the DBus one
             # didn't work.
@@ -65,13 +65,11 @@ class VideoPlayer(object):
         except FetchException as fex:
             logger.warn(fex)
 
-
     def __str__(self):
         s = '%s (%s)' % (self.title, self.url)
         if not self.is_playing():
             return '(DEAD) ' + s
         return s
-
 
     def _start_video(self, video_link, player='omxplayer', player_args=['-o', 'hdmi']):
         self.devnull = open(os.devnull, 'w')
@@ -79,7 +77,6 @@ class VideoPlayer(object):
                                 stdout=self.devnull)
         logger.info('Started video with pid: %d', proc.pid)
         self._video_proc = proc
-
 
     def _validate_url(self, url, query_url=False):
         """Test if [url] is valid. If [query_url] is True, will also do a HEAD
@@ -96,8 +93,7 @@ class VideoPlayer(object):
                 raise FetchException(url, e)
             if sc != 200:
                 raise BadStatusCodeException(url, sc)
-        return True # ftso. comparison and sane behaviour
-
+        return True  # ftso. comparison and sane behaviour
 
     def _fetch_directly(self, url):
         """Return [url] if it points to a local file, or it points to
@@ -105,7 +101,7 @@ class VideoPlayer(object):
 
         """
         if os.path.isfile(url) or self._validate_url(url, query_url=True):
-            self.title = url.split('/')[-1] # set title to file part of url
+            self.title = url.split('/')[-1]  # set title to file part of url
             return url
         return None
 
@@ -126,13 +122,11 @@ class VideoPlayer(object):
         except Exception as e:
             raise YoutubeDLException(url)
 
-
     def is_playing(self):
         """Checks if the process corresponding to the video is still alive."""
         if self._video_proc:
-            return self._video_proc.poll() == None
+            return self._video_proc.poll() is None
         return False
-
 
     def clean_up(self):
         """Cleans up the object."""
